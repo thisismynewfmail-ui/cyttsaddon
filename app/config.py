@@ -11,6 +11,13 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 STATE_FILE = os.path.join(DATA_DIR, "state.json")
 
+# Piper TTS voice models live here (.onnx + .onnx.json), and the auto-generated
+# previews for each voice land in the previews/ subfolder.
+VOICES_DIR = os.path.join(BASE_DIR, "voices")
+VOICE_PREVIEW_DIR = os.path.join(VOICES_DIR, "previews")
+# Sample line spoken when generating a voice preview.
+PREVIEW_TEXT = "Cognition core online. Voice synthesis channel is active and ready."
+
 # A plain ChatML template used only when "use_custom_template" is enabled
 # (raw /v1/completions mode). In the default mode we send the `messages`
 # array to /v1/chat/completions and let the endpoint apply its own template.
@@ -75,6 +82,23 @@ DEFAULT_SETTINGS = {
     "think_close_tag": "</think>",
     "think_off_directive": "/no_think",
     "think_on_directive": "",
+
+    # ---- Speech / TTS ----
+    # Which voice engine drives spoken output:
+    #   "noise" — the animal-crossing-style streaming blip synth (client-side)
+    #   "piper" — neural Piper TTS, synthesised per block on the server
+    "tts_engine": "noise",
+    "voice_enabled": False,         # master playback toggle (ONLY gates playback)
+    "tts_volume": 0.85,             # 0..1 output gain (both engines)
+    "tts_skip_think": True,         # never speak <think> reasoning aloud
+    # -- noise engine --
+    "noise_waveform": "square",     # square | sine | triangle | sawtooth
+    "noise_pitch": 320,             # base blip frequency (Hz)
+    "noise_pitch_variance": 90,     # random ± jitter per blip (Hz)
+    "noise_speed": 2,               # emit one blip every N non-space characters
+    # -- piper engine --
+    "piper_voice": "",              # selected voice id (filename stem, no .onnx)
+    "piper_length_scale": 1.0,      # speaking rate (lower = faster)
 
     # ---- Display ----
     "show_generation_info": False,  # per-message gen stats, hidden by default

@@ -1,0 +1,10 @@
+# Python
+__pycache__/
+*.pyc
+
+# Piper voice models + generated previews are large/binary — keep the folder
+# (README + previews/.gitkeep) but not the contents.
+voices/*.onnx
+voices/*.onnx.json
+voices/*.json
+voices/previews/*.wav

@@ -76,7 +76,7 @@
   <nav class="tabs" role="tablist">
     <button class="tab active" data-view="terminal"><i>▷</i> TERMINAL</button>
     <button class="tab" data-view="sessions"><i>▤</i> SESSIONS</button>
-    <button class="tab" data-view="settings"><i>⚙</i> SETTINGS</button>
+    <button class="tab" data-view="settings"><i>♬</i> SPEECH</button>
     <button class="tab" data-view="network"><i>⬡</i> NETWORK</button>
     <span class="tab-underline" id="tab-underline"></span>
   </nav>
@@ -197,9 +197,101 @@
       </div>
     </section>
 
-    <!-- --------- SETTINGS --------- -->
+    <!-- --------- SPEECH (redone settings tab) --------- -->
     <section class="view view-settings" data-view="settings">
       <div class="settings-scroll" id="settings-scroll">
+
+        <!-- SPEECH OUTPUT -->
+        <div class="panel cfg-card speech-card">
+          <div class="bracket tl"></div><div class="bracket tr"></div>
+          <div class="bracket bl"></div><div class="bracket br"></div>
+          <div class="cfg-head"><h3>♬ SPEECH OUTPUT</h3>
+            <span class="speech-chip" id="speech-chip"><i class="dot"></i><b>MUTED</b></span></div>
+
+          <div class="field toggle-field span-all hero-toggle">
+            <span>ENABLE VOICE FEEDBACK <em>(spoken output as the core replies)</em></span>
+            <button class="switch lg" data-toggle="voice_enabled" role="switch"></button>
+          </div>
+
+          <div class="field span-all">
+            <span>VOICE ENGINE</span>
+            <div class="engine-pick" id="engine-pick">
+              <button class="engine-opt" data-engine="noise">
+                <i>♒</i><b>NOISE SYNTH</b><em>animal-crossing blips · zero latency</em></button>
+              <button class="engine-opt" data-engine="piper">
+                <i>♬</i><b>PIPER TTS</b><em>neural voice · per-block streaming</em></button>
+            </div>
+          </div>
+
+          <div class="cfg-grid">
+            <label class="field span2">
+              <span>OUTPUT VOLUME — <b id="vol-val">85</b>%</span>
+              <input type="range" min="0" max="100" step="1" id="vol-range">
+            </label>
+            <div class="field toggle-field span2">
+              <span>SKIP REASONING <em>(never speak &lt;think&gt; aloud)</em></span>
+              <button class="switch" data-toggle="tts_skip_think" role="switch"></button>
+            </div>
+          </div>
+          <p class="cfg-foot">Voice output is shared state — every screen with audio enabled speaks in
+            sync. This master toggle <b>only</b> starts and stops playback; switching engine or voice
+            cleanly stops audio and releases any loaded model.</p>
+        </div>
+
+        <!-- NOISE SYNTH -->
+        <div class="panel cfg-card engine-card" id="noise-card">
+          <div class="bracket tl"></div><div class="bracket tr"></div>
+          <div class="bracket bl"></div><div class="bracket br"></div>
+          <div class="cfg-head"><h3>◈ NOISE SYNTH</h3>
+            <button class="btn mini ghost" id="btn-test-noise"><i>▶</i> TEST</button></div>
+          <div class="cfg-grid">
+            <label class="field">
+              <span>WAVEFORM</span>
+              <select data-setting="noise_waveform">
+                <option value="square">square</option>
+                <option value="sine">sine</option>
+                <option value="triangle">triangle</option>
+                <option value="sawtooth">sawtooth</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>BLIP RATE — every <b id="nspeed-val">2</b> chars</span>
+              <input type="range" min="1" max="8" step="1" id="nspeed-range">
+            </label>
+            <label class="field">
+              <span>BASE PITCH — <b id="npitch-val">320</b> Hz</span>
+              <input type="range" min="120" max="720" step="5" id="npitch-range">
+            </label>
+            <label class="field">
+              <span>PITCH JITTER — ± <b id="nvar-val">90</b> Hz</span>
+              <input type="range" min="0" max="300" step="5" id="nvar-range">
+            </label>
+          </div>
+          <p class="cfg-foot">A short blip fires as characters stream in — the classic "animal crossing"
+            chatter. Runs entirely in the browser, so it has no synthesis delay.</p>
+        </div>
+
+        <!-- PIPER VOICES -->
+        <div class="panel cfg-card engine-card" id="piper-card">
+          <div class="bracket tl"></div><div class="bracket tr"></div>
+          <div class="bracket bl"></div><div class="bracket br"></div>
+          <div class="cfg-head"><h3>◈ PIPER VOICES</h3>
+            <button class="btn mini" id="btn-gen-previews"><i>⟲</i> GENERATE PREVIEWS</button></div>
+          <div class="piper-status" id="piper-status">checking for Piper TTS…</div>
+          <div class="cfg-grid">
+            <label class="field span2">
+              <span>SPEAKING RATE — <b id="prate-val">1.00</b>× length <em>(lower = faster)</em></span>
+              <input type="range" min="0.5" max="1.6" step="0.05" id="prate-range">
+            </label>
+          </div>
+          <div class="voice-list" id="voice-list"></div>
+          <p class="cfg-foot">Install voices by dropping <code>.onnx</code> + <code>.onnx.json</code> files into the
+            <code>voices/</code> folder, then press <b>GENERATE PREVIEWS</b> — every voice without a sample
+            yet gets one rendered next to it. Blocks are synthesised as the reply streams for the fastest
+            possible first word.</p>
+        </div>
+
+        <div class="settings-divider"><span>◈ COGNITION ENGINE</span></div>
 
         <!-- LINK -->
         <div class="panel cfg-card">
