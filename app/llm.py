@@ -332,6 +332,17 @@ def stream_completion(messages_store, settings, user_text, on_delta, stop_flag=N
     finish_reason = None
     t0 = time.time()
 
+    # Some reasoning models stream their chain-of-thought through a separate
+    # `reasoning_content` channel instead of inline <think> tags. We synthesize
+    # the tags ourselves so the client's parser and history stripping keep
+    # working, and so reasoning streams into the foldout live.
+    think_open = False
+    think_closed = False
+
+    def _emit(text):
+        raw.append(text)
+        on_delta(text)
+
     resp = requests.post(url, json=body, headers=headers, stream=True, timeout=(10, 600))
     resp.raise_for_status()
 
@@ -360,12 +371,29 @@ def stream_completion(messages_store, settings, user_text, on_delta, stop_flag=N
             finish_reason = choice["finish_reason"]
 
         if is_chat:
-            delta = (choice.get("delta") or {}).get("content")
+            delta_obj = choice.get("delta") or {}
+            reasoning = delta_obj.get("reasoning_content")
+            delta = delta_obj.get("content")
         else:
+            reasoning = None
             delta = choice.get("text")
+
+        # Reasoning channel -> open an inline think span and stream into it.
+        if reasoning:
+            if not think_open:
+                _emit(op)
+                think_open = True
+            _emit(reasoning)
+        # First real content closes any open reasoning span.
         if delta:
-            raw.append(delta)
-            on_delta(delta)
+            if think_open and not think_closed:
+                _emit(cl)
+                think_closed = True
+            _emit(delta)
+
+    # Close a dangling reasoning span (reasoning-only or stopped/truncated turn).
+    if think_open and not think_closed:
+        _emit(cl)
 
     elapsed = max(1e-6, time.time() - t0)
     raw_text = "".join(raw)

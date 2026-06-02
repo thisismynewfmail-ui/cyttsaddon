@@ -229,6 +229,8 @@ function buildMessage(m) {
     const hadThinking = thinking.length > 0 || openEnded;
     const showT = settings.show_thinking !== false;
 
+    // Foldout reasoning bar sits ABOVE the answer. When thinking is hidden in
+    // Settings nothing is rendered here at all, so the answer text moves up.
     if (hadThinking && showT) wrap.appendChild(buildThink(m.id, thinking, openEnded && isStreaming));
 
     const bub = document.createElement("div");
@@ -237,14 +239,6 @@ function buildMessage(m) {
     if (isStreaming) bub.appendChild(caret());
     wrap.appendChild(bub);
 
-    if (hadThinking && !showT) {
-      const mk = document.createElement("div");
-      mk.className = "think-marker";
-      mk.innerHTML = (openEnded && isStreaming)
-        ? `<span class="spinner" style="width:9px;height:9px;border:1.5px solid var(--cyan-dim);border-top-color:var(--cyan-2);border-radius:50%;display:inline-block;animation:spin .8s linear infinite"></span> REASONING…`
-        : `◇ REASONED (hidden)`;
-      wrap.appendChild(mk);
-    }
     if (settings.show_generation_info && m.meta && !isStreaming) wrap.appendChild(buildGenInfo(m.meta));
   } else {
     if (m.images && m.images.length) wrap.appendChild(buildImages(m.images));
@@ -279,18 +273,28 @@ function caret() { const c = document.createElement("span"); c.className = "care
 function buildThink(id, text, spinning) {
   const box = document.createElement("div");
   // Folded by default; only expanded if the user has opted in for this message.
-  box.className = "think" + (thinkExpanded.has(id) ? "" : " collapsed") + (spinning ? " thinking" : "");
+  box.className = "think" + (thinkExpanded.has(id) ? " open" : " collapsed") + (spinning ? " thinking" : "");
+
+  // --- foldout bar (always visible, click to toggle) ---
   const head = document.createElement("div");
   head.className = "think-head";
+  head.setAttribute("role", "button");
+  head.setAttribute("tabindex", "0");
   head.innerHTML =
-    (spinning ? `<span class="spinner"></span>` : `<span>◇</span>`) +
-    ` <span class="think-label">${spinning ? "COGNIZING" : "COGNITION TRACE"}</span>` +
-    ` <span class="chev">▾</span>`;
-  head.addEventListener("click", () => {
-    box.classList.toggle("collapsed");
-    if (box.classList.contains("collapsed")) thinkExpanded.delete(id);
-    else thinkExpanded.add(id);
+    `<span class="think-ico">${spinning ? `<span class="spinner"></span>` : `◇`}</span>` +
+    `<span class="think-label">${spinning ? "REASONING" : "COGNITION TRACE"}</span>` +
+    `<span class="think-wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span>` +
+    `<span class="chev">▾</span>`;
+  const toggle = () => {
+    const collapsed = box.classList.toggle("collapsed");
+    box.classList.toggle("open", !collapsed);
+    if (collapsed) thinkExpanded.delete(id); else thinkExpanded.add(id);
+  };
+  head.addEventListener("click", toggle);
+  head.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
   });
+
   const body = document.createElement("div");
   body.className = "think-body";
   body.textContent = text;
