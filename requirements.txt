@@ -1,0 +1,6 @@
+Flask>=3.0
+Flask-SocketIO>=5.3
+simple-websocket>=1.0
+requests>=2.31
+# optional: more accurate token counts (a char-ratio fallback is used otherwise)
+# tiktoken>=0.5
