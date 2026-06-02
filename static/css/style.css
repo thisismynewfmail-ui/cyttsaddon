@@ -5,17 +5,19 @@
    ============================================================ */
 
 :root{
-  --bg:#06090c; --bg2:#0a0f15;
-  --panel:rgba(13,19,26,.80);
-  --panel-2:rgba(10,15,21,.92);
-  --edge:rgba(240,180,42,.32);
-  --edge-soft:rgba(240,180,42,.14);
+  /* Contrast-boosted amber + teal HUD — brighter ink, more visible edges,
+     true to the cyberpunk/Weyland reference but far easier to read. */
+  --bg:#05080b; --bg2:#0a0f15;
+  --panel:rgba(14,21,28,.88);
+  --panel-2:rgba(10,15,21,.95);
+  --edge:rgba(245,190,55,.52);
+  --edge-soft:rgba(245,190,55,.27);
 
-  --gold:#f0b42a; --gold-2:#ffd76b; --gold-dim:#7c5d1d;
-  --cyan:#45d6df; --cyan-2:#8af2f8; --cyan-dim:#1c6970;
-  --green:#83e06b; --red:#ff5347; --red-dim:#7a2620;
+  --gold:#ffc233; --gold-2:#ffe28f; --gold-dim:#b98a2c;
+  --cyan:#5fe6ef; --cyan-2:#aef7fb; --cyan-dim:#3aa9b2;
+  --green:#90f47c; --red:#ff6457; --red-dim:#9c3329;
 
-  --text:#dcd7c6; --muted:#8c8675; --faint:#5d5847;
+  --text:#f1edde; --muted:#b6ae98; --faint:#80785f;
 
   --display:'Oxanium',sans-serif;
   --ui:'Rajdhani',sans-serif;
@@ -392,6 +394,74 @@ input[type=range]::-moz-range-thumb{width:16px;height:18px;border:none;backgroun
   padding:3px 9px;transition:.2s}
 .model-pick button:hover{background:rgba(69,214,223,.12);color:#fff}
 .settings-tail{text-align:center;font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--faint);padding:6px 0}
+
+/* ============================================================ SPEECH TAB */
+.field select{background:rgba(0,0,0,.45);border:1px solid var(--edge-soft);color:var(--text);
+  padding:9px 11px;font-size:14px;font-family:var(--ui);outline:none;transition:.2s;width:100%;
+  clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)}
+.field select:focus{border-color:var(--gold);box-shadow:0 0 10px rgba(255,194,51,.25);background:rgba(0,0,0,.6)}
+.field select option{background:#0a0f15;color:var(--text)}
+
+.speech-card{border-color:var(--edge)}
+.speech-chip{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10px;letter-spacing:2px;
+  padding:4px 10px;border:1px solid var(--edge-soft);color:var(--muted)}
+.speech-chip.on{color:var(--green);border-color:var(--green)}
+.speech-chip.on .dot{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 1.8s infinite}
+.speech-chip.off{color:var(--muted);border-color:var(--edge-soft)}
+.speech-chip.off .dot{background:var(--faint)}
+.hero-toggle{border-color:var(--gold-dim);background:rgba(255,194,51,.06)}
+.hero-toggle>span{font-family:var(--display);font-weight:600;letter-spacing:1px;font-size:13px;color:var(--gold-2)}
+
+/* engine selector */
+.engine-pick{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.engine-opt{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:13px 15px;text-align:left;
+  border:1px solid var(--edge-soft);background:rgba(255,255,255,.02);transition:.2s;
+  clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
+.engine-opt i{font-style:normal;font-size:18px;color:var(--cyan);line-height:1}
+.engine-opt b{font-family:var(--display);font-weight:700;letter-spacing:2px;font-size:13px;color:var(--text)}
+.engine-opt em{font-style:normal;font-family:var(--mono);font-size:10px;letter-spacing:.5px;color:var(--faint)}
+.engine-opt:hover{border-color:var(--gold-dim);background:rgba(255,194,51,.06)}
+.engine-opt.sel{border-color:var(--gold);background:rgba(255,194,51,.12);box-shadow:inset 0 0 0 1px var(--gold-dim),var(--glow-gold)}
+.engine-opt.sel i{color:var(--gold-2)}
+.engine-opt.sel b{color:var(--gold-2)}
+
+/* whichever engine isn't selected dims its detail card */
+.engine-card.inactive{opacity:.5}
+.engine-card.inactive::after{content:"INACTIVE";position:absolute;top:14px;right:18px;font-family:var(--mono);
+  font-size:9px;letter-spacing:2px;color:var(--faint);border:1px solid var(--edge-soft);padding:2px 7px}
+
+.settings-divider{display:flex;align-items:center;gap:14px;margin:6px 4px 0;
+  font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--cyan-dim)}
+.settings-divider::before,.settings-divider::after{content:"";flex:1;height:1px;
+  background:linear-gradient(90deg,transparent,var(--edge-soft),transparent)}
+
+/* piper status + voices */
+.piper-status{font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--muted);
+  padding:8px 11px;margin-bottom:14px;border-left:2px solid var(--edge-soft);background:rgba(255,255,255,.02)}
+.piper-status.ok{color:var(--green);border-color:var(--green)}
+.piper-status.bad{color:var(--gold-2);border-color:var(--gold-dim)}
+.btn.busy{opacity:.6;pointer-events:none}
+.btn.busy i{display:inline-block;animation:spin .9s linear infinite}
+
+.voice-list{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.voice-empty{font-family:var(--mono);font-size:11.5px;line-height:1.6;color:var(--muted);
+  padding:14px;border:1px dashed var(--edge-soft);background:rgba(255,255,255,.015)}
+.voice-empty code{color:var(--cyan);font-size:11px}
+.voice-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--edge-soft);
+  background:rgba(255,255,255,.015);transition:.18s;
+  clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
+.voice-row:hover{border-color:var(--gold-dim);background:rgba(255,194,51,.05)}
+.voice-row.sel{border-color:var(--gold);background:rgba(255,194,51,.1);box-shadow:inset 3px 0 0 var(--gold)}
+.voice-pick{flex:1;display:flex;align-items:center;gap:10px;text-align:left}
+.voice-pick .vdot{width:11px;height:11px;flex:none;border:1px solid var(--cyan-dim);border-radius:50%;transition:.18s}
+.voice-row.sel .vdot{background:var(--gold-2);border-color:var(--gold);box-shadow:var(--glow-gold)}
+.voice-pick .vname{font-family:var(--display);font-weight:600;letter-spacing:1px;font-size:14px;color:var(--text);text-transform:capitalize}
+.voice-row.sel .vname{color:var(--gold-2)}
+.voice-prev{flex:none;font-family:var(--mono);font-size:10px;letter-spacing:1.5px;color:var(--cyan);
+  padding:6px 11px;border:1px solid var(--cyan-dim);background:rgba(95,230,239,.06);transition:.18s}
+.voice-prev:hover{background:rgba(95,230,239,.16);color:#fff;box-shadow:var(--glow-cyan)}
+.voice-prev.none{color:var(--faint);border-color:var(--edge-soft);background:transparent}
+.voice-prev.none:hover{color:var(--gold-2);border-color:var(--gold-dim);box-shadow:none}
 
 /* ============================================================ NETWORK */
 .net-panel{display:flex;flex-direction:column;height:100%;overflow-y:auto}

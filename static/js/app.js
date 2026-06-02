@@ -41,6 +41,10 @@ socket.on("busy", (d) => setBusy(d.busy));
 socket.on("link", (d) => setLink(d));
 socket.on("clients", (d) => setScreens(d.count));
 socket.on("toast", (d) => toast(d.text));
+socket.on("voices", (d) => renderVoices(d));
+socket.on("tts_audio", (d) => onTtsAudio(d));
+socket.on("tts_clear", () => clearTts());
+socket.on("previews_done", () => { $("#btn-gen-previews").classList.remove("busy"); });
 
 /* ============================================================
    BOOT SEQUENCE
@@ -312,6 +316,7 @@ function buildFoot(m) {
 /* ---------- streaming token updates ---------- */
 function onToken(d) {
   if (d.session_id !== active.id) return;
+  if (settings.voice_enabled && settings.tts_engine === "noise") speakNoise(d.delta);
   streamBuffers[d.message_id] = (streamBuffers[d.message_id] || "") + d.delta;
   const el = $(`.msg[data-id="${d.message_id}"]`, transcript);
   if (el) {
@@ -449,6 +454,7 @@ function populateSettings() {
   $("#prompt-mark").textContent = (settings.username || "User").toUpperCase() + " ▸";
   $("#sampler-grid").classList.toggle("dim", !!settings.use_endpoint_sampler_defaults);
   $("#net-url").textContent = `http://${location.hostname}:${location.port || 5005}`;
+  refreshSpeechUI();
   validateExtra();
   // re-render so username / show_thinking / geninfo changes take effect immediately
   renderTranscript();
@@ -488,6 +494,12 @@ $$("[data-toggle]").forEach((el) => {
     el.classList.toggle("on", val);
     pushSetting(key, val);
     if (key === "use_endpoint_sampler_defaults") $("#sampler-grid").classList.toggle("dim", val);
+    if (key === "voice_enabled") {
+      settings.voice_enabled = val;
+      if (val) getAudio();   // unlock audio on the user gesture
+      else clearTts();       // stop playback immediately when muted
+      refreshSpeechUI();
+    }
   });
 });
 // sampler numeric
@@ -527,6 +539,228 @@ function showDetectedModels(models) {
     list.appendChild(b);
   });
 }
+
+/* ============================================================
+   SPEECH — engines, controls, playback
+   ============================================================ */
+let voicesState = { voices: [], piper_available: false };
+
+/* ---- Web Audio (shared by both engines) ---- */
+let audioCtx = null;
+function getAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e) { return null; }
+  }
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  return audioCtx;
+}
+function ttsVolume() { return settings.tts_volume != null ? Number(settings.tts_volume) : 0.85; }
+
+/* ---- NOISE engine: streaming "animal crossing" blips ---- */
+let blipCount = 0;
+function blip(ctx) {
+  const now = ctx.currentTime;
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  const base = Number(settings.noise_pitch) || 320;
+  const varr = Number(settings.noise_pitch_variance) || 0;
+  o.type = settings.noise_waveform || "square";
+  o.frequency.value = Math.max(40, base + (Math.random() * 2 - 1) * varr);
+  const peak = Math.max(0.0001, ttsVolume() * 0.16);
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.exponentialRampToValueAtTime(peak, now + 0.006);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+  o.connect(g); g.connect(ctx.destination);
+  o.start(now); o.stop(now + 0.09);
+}
+function speakNoise(deltaText) {
+  const ctx = getAudio(); if (!ctx) return;
+  const speed = Math.max(1, Number(settings.noise_speed) || 2);
+  for (const ch of deltaText) {
+    if (/\s/.test(ch)) continue;
+    blipCount++;
+    if (blipCount % speed === 0) blip(ctx);
+  }
+}
+
+/* ---- PIPER engine: ordered playback of streamed WAV blocks ---- */
+const ttsBuffers = {};   // seq -> decoded AudioBuffer (awaiting its turn)
+let ttsNext = 1;         // next seq to play (server restarts seq at 1 per turn)
+let ttsActive = false;   // a block is currently sounding
+let ttsSource = null;
+
+function b64ToArrayBuffer(b64) {
+  const bin = atob(b64);
+  const len = bin.length, bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+function onTtsAudio(d) {
+  if (!settings.voice_enabled) return;
+  const ctx = getAudio(); if (!ctx) return;
+  let buf;
+  try { buf = b64ToArrayBuffer(d.audio); } catch (e) { return; }
+  ctx.decodeAudioData(buf.slice(0), (audio) => {
+    if (!settings.voice_enabled) return;
+    ttsBuffers[d.seq] = audio;
+    pumpTts();
+  }, () => {});
+}
+function pumpTts() {
+  if (ttsActive) return;
+  const audio = ttsBuffers[ttsNext];
+  if (!audio) return;
+  delete ttsBuffers[ttsNext];
+  ttsNext++;
+  const ctx = getAudio(); if (!ctx) return;
+  const src = ctx.createBufferSource(), g = ctx.createGain();
+  g.gain.value = ttsVolume();
+  src.buffer = audio; src.connect(g); g.connect(ctx.destination);
+  ttsSource = src; ttsActive = true;
+  src.onended = () => { ttsActive = false; ttsSource = null; pumpTts(); };
+  try { src.start(); } catch (e) { ttsActive = false; ttsSource = null; }
+}
+function clearTts() {
+  try { if (ttsSource) ttsSource.stop(); } catch (e) {}
+  ttsSource = null; ttsActive = false;
+  for (const k in ttsBuffers) delete ttsBuffers[k];
+  ttsNext = 1;
+}
+
+/* ---- Speech tab UI ---- */
+function refreshSpeechUI() {
+  const engine = settings.tts_engine || "noise";
+  $$(".engine-opt").forEach((b) => b.classList.toggle("sel", b.dataset.engine === engine));
+  const nc = $("#noise-card"), pc = $("#piper-card");
+  if (nc) nc.classList.toggle("inactive", engine !== "noise");
+  if (pc) pc.classList.toggle("inactive", engine !== "piper");
+
+  // chip status
+  const chip = $("#speech-chip");
+  if (chip) {
+    chip.classList.remove("on", "off");
+    chip.classList.add(settings.voice_enabled ? "on" : "off");
+    chip.querySelector("b").textContent = settings.voice_enabled
+      ? (engine === "piper" ? "PIPER" : "NOISE") + " · LIVE" : "MUTED";
+  }
+
+  setRange("#vol-range", "#vol-val", Math.round(ttsVolume() * 100));
+  setRange("#nspeed-range", "#nspeed-val", settings.noise_speed ?? 2);
+  setRange("#npitch-range", "#npitch-val", settings.noise_pitch ?? 320);
+  setRange("#nvar-range", "#nvar-val", settings.noise_pitch_variance ?? 90);
+  const pr = settings.piper_length_scale ?? 1.0;
+  setRange("#prate-range", "#prate-val", pr, (v) => Number(v).toFixed(2));
+  // keep selection highlight in sync with the latest settings
+  highlightVoice();
+}
+function setRange(rangeSel, labelSel, val, fmt) {
+  const r = $(rangeSel), l = $(labelSel);
+  if (r && !isFocused(r)) r.value = val;
+  if (l) l.textContent = fmt ? fmt(val) : val;
+}
+function highlightVoice() {
+  $$(".voice-row").forEach((row) =>
+    row.classList.toggle("sel", row.dataset.id === (settings.piper_voice || "")));
+}
+
+function renderVoices(d) {
+  voicesState = d || { voices: [], piper_available: false };
+  const status = $("#piper-status");
+  if (status) {
+    status.classList.remove("ok", "bad");
+    if (voicesState.piper_available) {
+      status.classList.add("ok");
+      status.textContent = `Piper TTS detected · ${voicesState.voices.length} voice(s) installed`;
+    } else {
+      status.classList.add("bad");
+      status.textContent = "Piper TTS not installed — run:  pip install piper-tts";
+    }
+  }
+  const box = $("#voice-list"); if (!box) return;
+  box.innerHTML = "";
+  if (!voicesState.voices.length) {
+    box.innerHTML = '<div class="voice-empty">No voices found. Drop <code>.onnx</code> + ' +
+      '<code>.onnx.json</code> files into the <code>voices/</code> folder, then GENERATE PREVIEWS.</div>';
+    return;
+  }
+  for (const v of voicesState.voices) {
+    const row = document.createElement("div");
+    row.className = "voice-row" + (v.id === (settings.piper_voice || "") ? " sel" : "");
+    row.dataset.id = v.id;
+
+    const pick = document.createElement("button");
+    pick.className = "voice-pick";
+    pick.innerHTML = `<i class="vdot"></i><span class="vname"></span>`;
+    pick.querySelector(".vname").textContent = v.name;
+    pick.addEventListener("click", () => {
+      pushSetting("piper_voice", v.id);
+      settings.piper_voice = v.id;
+      highlightVoice();
+    });
+
+    const prev = document.createElement("button");
+    prev.className = "voice-prev";
+    if (v.has_preview) {
+      prev.innerHTML = "▶ PREVIEW";
+      prev.addEventListener("click", (e) => { e.stopPropagation(); playPreview(v); });
+    } else {
+      prev.classList.add("none");
+      prev.innerHTML = "— NO PREVIEW";
+      prev.title = "Press GENERATE PREVIEWS to render a sample";
+      prev.addEventListener("click", (e) => { e.stopPropagation(); genPreviews(); });
+    }
+
+    row.appendChild(pick); row.appendChild(prev);
+    box.appendChild(row);
+  }
+}
+
+let previewAudio = null;
+function playPreview(v) {
+  getAudio(); // user gesture
+  try { if (previewAudio) { previewAudio.pause(); } } catch (e) {}
+  previewAudio = new Audio(v.preview_url + "?t=" + Date.now());
+  previewAudio.volume = ttsVolume();
+  previewAudio.play().catch(() => toast("Could not play preview", true));
+}
+function genPreviews() {
+  if (!voicesState.piper_available) { toast("Install Piper TTS first (pip install piper-tts)", true); return; }
+  $("#btn-gen-previews").classList.add("busy");
+  socket.emit("generate_previews");
+}
+
+/* ---- Speech tab wiring ---- */
+$$(".engine-opt").forEach((b) => b.addEventListener("click", () => {
+  const eng = b.dataset.engine;
+  if (settings.tts_engine === eng) return;
+  settings.tts_engine = eng;
+  clearTts();
+  pushSetting("tts_engine", eng);
+  refreshSpeechUI();
+}));
+bindSpeechRange("#vol-range", "#vol-val", "tts_volume", (v) => v / 100, (v) => Math.round(v * 100));
+bindSpeechRange("#nspeed-range", "#nspeed-val", "noise_speed", (v) => Math.round(v));
+bindSpeechRange("#npitch-range", "#npitch-val", "noise_pitch", (v) => Math.round(v));
+bindSpeechRange("#nvar-range", "#nvar-val", "noise_pitch_variance", (v) => Math.round(v));
+bindSpeechRange("#prate-range", "#prate-val", "piper_length_scale",
+  (v) => Number(v), (v) => Number(v).toFixed(2));
+
+function bindSpeechRange(rangeSel, labelSel, key, toVal, fmt) {
+  const r = $(rangeSel); if (!r) return;
+  r.addEventListener("input", () => {
+    const v = toVal(Number(r.value));
+    settings[key] = v;
+    $(labelSel).textContent = fmt ? fmt(v) : v;
+  });
+  r.addEventListener("change", () => pushSetting(key, toVal(Number(r.value))));
+}
+
+$("#btn-gen-previews").addEventListener("click", genPreviews);
+$("#btn-test-noise").addEventListener("click", () => {
+  const ctx = getAudio(); if (!ctx) return;
+  let i = 0;
+  const id = setInterval(() => { blip(ctx); if (++i >= 14) clearInterval(id); }, 70);
+});
 
 /* ============================================================
    BACKGROUND NETWORK CANVAS

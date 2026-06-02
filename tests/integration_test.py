@@ -7,7 +7,7 @@ results = []
 
 sio = socketio.Client()
 state = {"settings": None, "session": None, "sessions": None, "link": None,
-         "busy": [], "tokens": [], "syncs": 0}
+         "busy": [], "tokens": [], "syncs": 0, "voices": None}
 
 @sio.on("settings")
 def _s(d): state["settings"] = d
@@ -21,6 +21,8 @@ def _l(d): state["link"] = d
 def _b(d): state["busy"].append(d["busy"])
 @sio.on("gen_token")
 def _t(d): state["tokens"].append(d["delta"])
+@sio.on("voices")
+def _v(d): state["voices"] = d
 
 sio.connect(URL, wait_timeout=10)
 time.sleep(0.6)
@@ -93,6 +95,24 @@ results.append(("rename applied", renamed and renamed[0]["name"] == "Renamed-Tes
 sio.emit("delete_session", {"id": dup_id})
 time.sleep(0.4)
 results.append(("delete reduced count", len(state["sessions"]["sessions"]) == before))
+
+# 5b) speech / TTS surface
+results.append(("voices snapshot on connect", state["voices"] is not None))
+results.append(("voices payload shape", state["voices"] is not None and
+                set(state["voices"].keys()) >= {"voices", "piper_available", "engine"}))
+results.append(("default tts fields present", state["settings"].get("tts_engine") == "noise"
+                and state["settings"].get("voice_enabled") is False))
+sio.emit("update_settings", {"tts_engine": "piper", "voice_enabled": True,
+                             "piper_voice": "test_voice", "noise_pitch": 440})
+time.sleep(0.4)
+sio.emit("list_voices")
+time.sleep(0.3)
+results.append(("tts settings updated", state["settings"].get("tts_engine") == "piper"
+                and state["settings"].get("noise_pitch") == 440))
+results.append(("voices reflects selection", state["voices"].get("selected") == "test_voice"))
+# back to defaults so a re-run starts clean and audio stays off
+sio.emit("update_settings", {"tts_engine": "noise", "voice_enabled": False, "piper_voice": ""})
+time.sleep(0.3)
 
 # 6) persistence on disk
 import os as _os

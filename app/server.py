@@ -11,12 +11,14 @@ can be toggled at runtime without rebinding the socket.
 
 from __future__ import annotations
 
+import base64
+import os
 import threading
 
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, send_file
 from flask_socketio import SocketIO, emit
 
-from . import config, llm
+from . import config, llm, tts
 from .state import StateStore
 
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
@@ -88,6 +90,10 @@ def broadcast_settings():
     socketio.emit("settings", store.public_settings())
 
 
+def broadcast_voices():
+    socketio.emit("voices", tts.voices_payload(store.get_settings()))
+
+
 def broadcast_sessions():
     socketio.emit("sessions", {
         "sessions": store.list_sessions(),
@@ -137,6 +143,14 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/tts/preview/<voice_id>.wav")
+def tts_preview(voice_id):
+    path = tts.preview_path(voice_id)
+    if not os.path.exists(path):
+        return ("preview not found", 404)
+    return send_file(path, mimetype="audio/wav", conditional=True)
+
+
 # --------------------------------------------------------------------------
 # Socket lifecycle
 # --------------------------------------------------------------------------
@@ -156,6 +170,7 @@ def on_connect(auth):
     emit("settings", store.public_settings())
     emit("sessions", {"sessions": store.list_sessions(), "active_id": store.active_id()})
     emit("session_sync", active_session_payload())
+    emit("voices", tts.voices_payload(store.get_settings()))
     emit("busy", {"busy": _busy})
     emit("clients", {"count": _client_count()})
     broadcast_clients()
@@ -193,6 +208,48 @@ def on_update_settings(data):
     # Re-test the link when endpoint details change.
     if any(prev.get(k) != new.get(k) for k in config.LINK_FIELDS):
         socketio.start_background_task(run_link_test)
+
+    # --- Speech engine bookkeeping ---
+    voice_changed = prev.get("piper_voice") != new.get("piper_voice")
+    engine_changed = prev.get("tts_engine") != new.get("tts_engine")
+    disabled = prev.get("voice_enabled") and not new.get("voice_enabled")
+    # Release the resident Piper model whenever it can no longer be in use, or
+    # when a different voice is selected (clean switch + memory cleanup).
+    if voice_changed or disabled or (engine_changed and new.get("tts_engine") != "piper"):
+        tts.unload()
+    # Stop any in-flight playback on every screen when voice output is turned
+    # off or the engine changes underneath it.
+    if disabled or engine_changed:
+        socketio.emit("tts_clear", {})
+    if voice_changed or engine_changed or prev.get("voice_enabled") != new.get("voice_enabled"):
+        broadcast_voices()
+
+
+@socketio.on("list_voices")
+def on_list_voices(_data=None):
+    emit("voices", tts.voices_payload(store.get_settings()))
+
+
+@socketio.on("generate_previews")
+def on_generate_previews(_data=None):
+    socketio.start_background_task(_do_generate_previews)
+
+
+def _do_generate_previews():
+    if not tts.piper_available():
+        socketio.emit("toast", {"text": "Piper TTS not installed — pip install piper-tts"})
+        socketio.emit("previews_done", {"made": [], "ok": False})
+        return
+    pending = [v for v in tts.list_voices() if not v["has_preview"]]
+    if not pending:
+        socketio.emit("toast", {"text": "All voices already have a preview"})
+        socketio.emit("previews_done", {"made": [], "ok": True})
+        return
+    socketio.emit("toast", {"text": f"Generating {len(pending)} voice preview(s)…"})
+    made = tts.generate_missing_previews()
+    broadcast_voices()
+    socketio.emit("previews_done", {"made": made, "ok": True})
+    socketio.emit("toast", {"text": f"Voice previews ready ({len(made)} new)"})
 
 
 @socketio.on("test_link")
@@ -269,6 +326,7 @@ def on_delete_message(data):
 @socketio.on("stop_generation")
 def on_stop_generation(_data=None):
     _stop_event.set()
+    socketio.emit("tts_clear", {})
 
 
 @socketio.on("send_message")
@@ -303,9 +361,27 @@ def on_send_message(data):
     socketio.start_background_task(_run_generation, sid, pid, text, settings)
 
 
+def _emit_tts_audio(seq, wav_bytes, sample_rate):
+    socketio.emit("tts_audio", {
+        "seq": seq,
+        "sample_rate": sample_rate,
+        "audio": base64.b64encode(wav_bytes).decode("ascii"),
+    })
+
+
 def _run_generation(sid, pid, text, settings):
     global _busy
     buf = []
+
+    # Spin up the Piper per-block speech pipeline only when it is actually in
+    # use; the noise engine is handled entirely client-side.
+    tts_stream = None
+    if (settings.get("voice_enabled")
+            and settings.get("tts_engine") == "piper"
+            and settings.get("piper_voice")
+            and tts.piper_available()):
+        socketio.emit("tts_clear", {})  # reset playback ordering for this turn
+        tts_stream = tts.TTSStreamer(settings, _emit_tts_audio)
 
     def on_delta(delta):
         buf.append(delta)
@@ -313,6 +389,8 @@ def _run_generation(sid, pid, text, settings):
         # without thrashing the disk on every token.
         store.buffer_message(sid, pid, "".join(buf))
         socketio.emit("gen_token", {"session_id": sid, "message_id": pid, "delta": delta})
+        if tts_stream is not None:
+            tts_stream.feed(delta)
 
     try:
         # Request history excludes the just-added user turn + placeholder;
@@ -344,6 +422,14 @@ def _run_generation(sid, pid, text, settings):
         socketio.emit("toast", {"text": f"Link error: {str(e)[:80]}"})
         socketio.start_background_task(run_link_test)
     finally:
+        if tts_stream is not None:
+            # Honour a user stop by dropping queued speech; otherwise speak the
+            # final partial clause before the worker drains and exits.
+            if _stop_event.is_set():
+                tts_stream.stop()
+            else:
+                tts_stream.finish()
+            tts_stream.close()
         with _gen_lock:
             _busy = False
         broadcast_busy()

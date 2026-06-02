@@ -11,14 +11,16 @@ omnibrain/
 ├── python.py            ← launcher  (python python.py)
 ├── requirements.txt
 ├── app/
-│   ├── config.py        factory defaults (endpoint, samplers, context…)
+│   ├── config.py        factory defaults (endpoint, samplers, context, speech…)
 │   ├── llm.py           engine: tokens, context cropping, think handling, streaming
+│   ├── tts.py           speech: Piper TTS, per-block synth pipeline, voice cache
 │   ├── state.py         thread-safe persistent store (data/state.json)
 │   └── server.py        Flask + Socket.IO sync, access gating, streaming relay
 ├── static/
 │   ├── css/style.css    the theme
-│   └── js/app.js        client: sync, streaming render, animated core
+│   └── js/app.js        client: sync, streaming render, animated core, voice
 ├── templates/index.html
+├── voices/              Piper voice models (.onnx + .onnx.json) + previews/
 ├── data/                created at runtime (state.json) — your saved state
 └── tests/               mock endpoint + integration test
 ```
@@ -34,8 +36,10 @@ Then open **http://localhost:5005**. Override the port with
 `OMNIBRAIN_PORT=8080 python python.py`.
 
 By default the terminal talks to `http://10.0.0.113:5000/v1` with model
-`Omnibrain-UE` and a blank API key. Change any of this under **SETTINGS → LINK**
+`Omnibrain-UE` and a blank API key. Change any of this under **SPEECH → LINK**
 and press **TEST CONNECTION** — the core lights up when the link is live.
+(The redone **SPEECH** tab holds both the voice settings and the cognition-engine
+configuration, under a `◈ COGNITION ENGINE` divider.)
 
 ## Sharing across screens (LAN sync)
 
@@ -74,11 +78,38 @@ Set an optional **ACCESS TOKEN** to require a shared secret to connect.
   turn, so past thinking is never replayed into context. **ENABLE THINKING** off
   appends a configurable directive (default `/no_think`).
 - **Generation info** (tokens, tok/s, elapsed, finish reason) sits under each
-  reply — hidden by default, toggle under **SETTINGS → DISPLAY**.
+  reply — hidden by default, toggle under **SPEECH → DISPLAY**.
 - **Prompt format**: default mode posts the `messages` array to
   `/v1/chat/completions` (the server applies its own template). Flip *use custom
   Jinja template* to render a template locally and post raw to
   `/v1/completions`.
+
+## Speech / voice output
+
+The **SPEECH** tab drives spoken output and offers two interchangeable engines,
+selected with **VOICE ENGINE**:
+
+- **NOISE SYNTH** — an animal-crossing-style blip per character as the reply
+  streams in. It runs entirely in the browser (Web Audio), so there is zero
+  synthesis latency. Tune the waveform, blip rate, base pitch and pitch jitter.
+- **PIPER TTS** — neural speech via [Piper](https://github.com/rhasspy/piper)
+  (`pip install piper-tts`). Each clause is synthesised **per block** on the
+  server as the model streams, so the first sentence is spoken while the rest is
+  still generating — the fastest possible first word. Reasoning inside the think
+  tags is never spoken.
+
+**ENABLE VOICE FEEDBACK** is the master switch and *only* gates playback —
+turning it off stops audio immediately; switching engine or voice cleanly stops
+playback and unloads any resident Piper model (`gc`), so memory is released
+promptly. Only one Piper voice is held in memory at a time.
+
+### Adding Piper voices
+
+Drop a voice's `.onnx` and `.onnx.json` files into `voices/` (see
+`voices/README.md`), then press **GENERATE PREVIEWS** — every voice that does
+not yet have a sample gets one rendered and placed next to it, ready to ▶
+audition. Pick a voice, enable voice feedback, and the core speaks. If Piper is
+not installed the tab says so and the noise engine remains available.
 
 ## Sessions
 
