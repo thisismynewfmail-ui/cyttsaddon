@@ -261,11 +261,21 @@ body:not(.state-boot) #boot{opacity:0;pointer-events:none}
 .think{border:1px dashed var(--cyan-dim);background:rgba(69,214,223,.04);overflow:hidden;
   clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px))}
 .think-head{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;font-family:var(--mono);
-  font-size:10px;letter-spacing:2px;color:var(--cyan);background:rgba(69,214,223,.06);user-select:none}
-.think-head .chev{margin-left:auto;transition:.25s}
+  font-size:10px;letter-spacing:2px;color:var(--cyan);background:rgba(69,214,223,.06);user-select:none;
+  transition:background .2s,color .2s}
+.think-head:hover{background:rgba(69,214,223,.11);color:var(--cyan-2)}
+.think-head .chev{margin-left:auto;transition:transform .25s ease}
 .think.collapsed .chev{transform:rotate(-90deg)}
 .think-head .spinner{width:9px;height:9px;border:1.5px solid var(--cyan-dim);border-top-color:var(--cyan-2);
-  border-radius:50%;animation:spin .8s linear infinite}
+  border-radius:50%;animation:spin .8s linear infinite;flex:none}
+/* active reasoning: animated shimmer on the folded header */
+.think.thinking{border-color:var(--cyan);box-shadow:0 0 0 1px rgba(69,214,223,.12) inset,0 0 14px rgba(69,214,223,.12)}
+.think.thinking .think-head{background:rgba(69,214,223,.1)}
+.think.thinking .think-label{background:linear-gradient(100deg,
+    var(--cyan-dim) 0%,var(--cyan-dim) 38%,var(--cyan-2) 50%,var(--cyan-dim) 62%,var(--cyan-dim) 100%);
+  background-size:240% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:thinkShimmer 1.5s linear infinite}
+@keyframes thinkShimmer{from{background-position:140% 0}to{background-position:-100% 0}}
 .think-body{padding:11px 14px;font-family:var(--mono);font-size:12px;line-height:1.6;color:#9fd6da;
   white-space:pre-wrap;word-break:break-word;max-height:340px;overflow-y:auto}
 .think.collapsed .think-body{display:none}

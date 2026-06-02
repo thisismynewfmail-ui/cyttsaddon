@@ -14,7 +14,7 @@ let active = { id: null, name: "", messages: [], context: {} };
 let busy = false;
 let linkOnline = false;
 const streamBuffers = {};           // messageId -> live text
-const thinkCollapsed = new Set();   // messageIds whose reasoning is collapsed
+const thinkExpanded = new Set();    // messageIds whose reasoning is expanded (folded by default)
 let stuck = true;                    // transcript pinned to bottom?
 let booted = false;
 
@@ -278,16 +278,18 @@ function caret() { const c = document.createElement("span"); c.className = "care
 
 function buildThink(id, text, spinning) {
   const box = document.createElement("div");
-  box.className = "think" + (thinkCollapsed.has(id) ? " collapsed" : "");
+  // Folded by default; only expanded if the user has opted in for this message.
+  box.className = "think" + (thinkExpanded.has(id) ? "" : " collapsed") + (spinning ? " thinking" : "");
   const head = document.createElement("div");
   head.className = "think-head";
   head.innerHTML =
     (spinning ? `<span class="spinner"></span>` : `<span>◇</span>`) +
-    ` COGNITION TRACE <span class="chev">▾</span>`;
+    ` <span class="think-label">${spinning ? "COGNIZING" : "COGNITION TRACE"}</span>` +
+    ` <span class="chev">▾</span>`;
   head.addEventListener("click", () => {
     box.classList.toggle("collapsed");
-    if (box.classList.contains("collapsed")) thinkCollapsed.add(id);
-    else thinkCollapsed.delete(id);
+    if (box.classList.contains("collapsed")) thinkExpanded.delete(id);
+    else thinkExpanded.add(id);
   });
   const body = document.createElement("div");
   body.className = "think-body";
