@@ -67,6 +67,24 @@ results.append(("dynamic_temperature passed through", '"dynamic_temperature": tr
 results.append(("gen meta present", bool(amsg.get("meta", {}).get("completion_tokens"))))
 results.append(("busy toggled True then False", True in state["busy"] and state["busy"][-1] is False))
 
+# 3b) image attachment: a vision turn relays an image_url part to the endpoint
+TINY_PNG = ("data:image/png;base64,"
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+state["tokens"].clear()
+state["busy"] = []
+sio.emit("send_message", {"text": "describe this", "images": [TINY_PNG, "not-a-data-url"]})
+for _ in range(100):
+    time.sleep(0.1)
+    if state["busy"] and state["busy"][-1] is False and True in state["busy"]:
+        break
+time.sleep(0.5)
+imsgs = state["session"]["messages"]
+user_imgs = [m for m in imsgs if m["role"] == "user" and m.get("images")]
+results.append(("image stored on user message", bool(user_imgs)))
+results.append(("malformed image filtered out", user_imgs and len(user_imgs[-1]["images"]) == 1))
+last_assistant = [m for m in imsgs if m["role"] == "assistant"][-1]
+results.append(("image relayed to endpoint", "images=1" in (last_assistant.get("clean") or "")))
+
 # 4) context cropping: shrink window hard and add several turns
 sio.emit("update_settings", {"context_size": 400, "context_threshold": 70, "max_tokens": 0})
 time.sleep(0.3)

@@ -247,14 +247,31 @@ function buildMessage(m) {
     }
     if (settings.show_generation_info && m.meta && !isStreaming) wrap.appendChild(buildGenInfo(m.meta));
   } else {
-    const bub = document.createElement("div");
-    bub.className = "msg-bubble";
-    bub.textContent = text;
-    wrap.appendChild(bub);
+    if (m.images && m.images.length) wrap.appendChild(buildImages(m.images));
+    // An image-only turn needs no (empty) text bubble.
+    if (text || !(m.images && m.images.length)) {
+      const bub = document.createElement("div");
+      bub.className = "msg-bubble";
+      bub.textContent = text;
+      wrap.appendChild(bub);
+    }
   }
 
   if (!isStreaming) wrap.appendChild(buildFoot(m));
   return wrap;
+}
+
+function buildImages(images) {
+  const box = document.createElement("div");
+  box.className = "msg-images";
+  for (const src of images) {
+    const a = document.createElement("a");
+    a.href = src; a.target = "_blank"; a.rel = "noopener";
+    const img = document.createElement("img");
+    img.src = src; img.loading = "lazy"; img.alt = "attached image";
+    a.appendChild(img); box.appendChild(a);
+  }
+  return box;
 }
 
 function caret() { const c = document.createElement("span"); c.className = "caret"; return c; }
@@ -350,11 +367,94 @@ input.addEventListener("keydown", (e) => {
 sendBtn.addEventListener("click", send);
 function send() {
   const text = input.value.trim();
-  if (!text || busy) return;
-  socket.emit("send_message", { text });
-  input.value = ""; autosize(); stuck = true;
+  if ((!text && !pendingImages.length) || busy) return;
+  const payload = { text };
+  if (pendingImages.length) payload.images = pendingImages.slice();
+  socket.emit("send_message", payload);
+  input.value = ""; pendingImages = []; renderAttachTray(); autosize(); stuck = true;
 }
 $("#prompt-mark").textContent = "USER ▸";
+
+/* ============================================================
+   IMAGE ATTACHMENTS — pick, compress, preview
+   ============================================================ */
+let pendingImages = [];                 // compressed data URLs awaiting transmit
+const IMG_MAX_DIM_FALLBACK = 1280;
+const IMG_QUALITY_FALLBACK = 0.82;
+const attachBtn = $("#attach-btn");
+const imageInput = $("#image-input");
+const attachTray = $("#attach-tray");
+
+// Downscale + re-encode an image File to a JPEG data URL, entirely in-browser.
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("read failed"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("decode failed"));
+      img.onload = () => {
+        let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+        const maxDim = Number(settings.image_max_dim) || IMG_MAX_DIM_FALLBACK;
+        if (maxDim > 0 && Math.max(w, h) > maxDim) {
+          const scale = maxDim / Math.max(w, h);
+          w = Math.round(w * scale); h = Math.round(h * scale);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        const q = Number(settings.image_quality) || IMG_QUALITY_FALLBACK;
+        try { resolve(canvas.toDataURL("image/jpeg", q)); }
+        catch (e) { reject(e); }
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function addImageFiles(files) {
+  const imgs = [...files].filter((f) => f && f.type && f.type.startsWith("image/"));
+  if (!imgs.length) return;
+  for (const f of imgs) {
+    if (pendingImages.length >= 8) { toast("Up to 8 images per message", true); break; }
+    try { pendingImages.push(await compressImage(f)); }
+    catch (e) { toast("Could not read an image", true); }
+  }
+  renderAttachTray();
+}
+
+function renderAttachTray() {
+  if (!attachTray) return;
+  attachTray.innerHTML = "";
+  attachTray.hidden = pendingImages.length === 0;
+  attachBtn.classList.toggle("has", pendingImages.length > 0);
+  pendingImages.forEach((src, i) => {
+    const thumb = document.createElement("div");
+    thumb.className = "attach-thumb";
+    thumb.style.backgroundImage = `url("${src}")`;
+    const rm = document.createElement("button");
+    rm.className = "rm"; rm.textContent = "✕"; rm.title = "Remove";
+    rm.addEventListener("click", () => { pendingImages.splice(i, 1); renderAttachTray(); });
+    thumb.appendChild(rm);
+    attachTray.appendChild(thumb);
+  });
+}
+
+attachBtn.addEventListener("click", () => { if (!busy) imageInput.click(); });
+imageInput.addEventListener("change", () => {
+  addImageFiles(imageInput.files);
+  imageInput.value = "";  // allow re-picking the same file
+});
+// paste an image straight from the clipboard into the composer
+input.addEventListener("paste", (e) => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  const files = [...items].filter((it) => it.kind === "file" && it.type.startsWith("image/"))
+                          .map((it) => it.getAsFile()).filter(Boolean);
+  if (files.length) { e.preventDefault(); addImageFiles(files); }
+});
 
 function setBusy(b) {
   busy = b;
@@ -362,6 +462,7 @@ function setBusy(b) {
   $("#btn-stop").disabled = !b;
   sendBtn.disabled = b;
   input.disabled = b;
+  if (attachBtn) attachBtn.disabled = b;
   refreshCore();
 }
 $("#btn-stop").addEventListener("click", () => socket.emit("stop_generation"));
@@ -453,6 +554,8 @@ function populateSettings() {
   $("#stat-model").textContent = settings.model || "—";
   $("#prompt-mark").textContent = (settings.username || "User").toUpperCase() + " ▸";
   $("#sampler-grid").classList.toggle("dim", !!settings.use_endpoint_sampler_defaults);
+  const attachEl = $("#attach-btn");
+  if (attachEl) attachEl.style.display = (settings.image_input_enabled === false) ? "none" : "";
   $("#net-url").textContent = `http://${location.hostname}:${location.port || 5005}`;
   refreshSpeechUI();
   validateExtra();

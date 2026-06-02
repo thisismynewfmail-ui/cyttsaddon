@@ -163,14 +163,27 @@
         <button class="jump-latest" id="jump-latest">↓ LATEST</button>
 
         <div class="composer">
+          <div class="attach-tray" id="attach-tray" hidden></div>
           <div class="composer-frame">
             <span class="prompt-mark" id="prompt-mark">USER&nbsp;▸</span>
             <textarea id="input" rows="1" placeholder="Transmit to cognition core…"
                       autocomplete="off"></textarea>
-            <button class="send-btn" id="send-btn" title="Send (Enter)">
-              <span class="send-icon">➤</span>
-            </button>
+            <div class="composer-btns">
+              <button class="attach-btn" id="attach-btn" title="Attach image">
+                <svg class="attach-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3" y="5" width="18" height="14" rx="1.5" fill="none"
+                        stroke="currentColor" stroke-width="1.7"/>
+                  <circle cx="8.5" cy="9.5" r="1.8" fill="currentColor"/>
+                  <path d="M4 17l5-5 4 4 3-3 4 4" fill="none" stroke="currentColor"
+                        stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <button class="send-btn" id="send-btn" title="Send (Enter)">
+                <span class="send-icon">➤</span>
+              </button>
+            </div>
           </div>
+          <input type="file" id="image-input" accept="image/*" multiple hidden>
           <div class="composer-hint">
             <span><b>ENTER</b> transmit &nbsp;·&nbsp; <b>SHIFT+ENTER</b> newline</span>
             <span id="busy-flag" class="busy-flag">◷ CORE BUSY</span>

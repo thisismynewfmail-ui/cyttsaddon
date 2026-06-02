@@ -296,12 +296,41 @@ body:not(.state-boot) #boot{opacity:0;pointer-events:none}
 .prompt-mark{font-family:var(--mono);font-size:12px;color:var(--gold);letter-spacing:1px;padding-bottom:8px;flex:none;white-space:nowrap}
 #input{flex:1;background:none;border:none;outline:none;resize:none;color:var(--text);font-size:15px;line-height:1.5;max-height:180px;font-family:var(--ui);padding:5px 0}
 #input::placeholder{color:var(--faint)}
+.composer-btns{flex:none;display:flex;flex-direction:column;gap:6px;align-items:stretch}
 .send-btn{flex:none;width:40px;height:40px;display:grid;place-items:center;border:1px solid var(--gold);
   background:rgba(240,180,42,.12);color:var(--gold-2);transition:.2s;
   clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
 .send-btn:hover{background:var(--gold);color:#0a0a0a;box-shadow:var(--glow-gold)}
 .send-btn:disabled{opacity:.35;cursor:not-allowed;background:transparent;box-shadow:none}
 .send-icon{font-size:15px;transform:translateX(1px)}
+
+/* attach-image control — sits above the send button */
+.attach-btn{flex:none;width:40px;height:30px;display:grid;place-items:center;border:1px solid var(--cyan-dim);
+  background:rgba(69,214,223,.08);color:var(--cyan);transition:.2s;
+  clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
+.attach-btn:hover{background:var(--cyan-dim);color:#0a0a0a;box-shadow:var(--glow-cyan);border-color:var(--cyan)}
+.attach-btn.has{border-color:var(--cyan);color:var(--cyan-2);box-shadow:var(--glow-cyan)}
+.attach-btn:disabled{opacity:.35;cursor:not-allowed;background:transparent;box-shadow:none}
+.attach-icon{width:18px;height:18px;display:block}
+
+/* pending-attachment tray (before transmit) */
+.attach-tray{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.attach-tray[hidden]{display:none}
+.attach-thumb{position:relative;width:60px;height:60px;border:1px solid var(--cyan-dim);
+  background:#06090d center/cover no-repeat;
+  clip-path:polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px)}
+.attach-thumb .rm{position:absolute;top:-1px;right:-1px;width:18px;height:18px;display:grid;place-items:center;
+  font-size:11px;line-height:1;color:#0a0a0a;background:var(--gold);border:none;cursor:pointer}
+.attach-thumb .rm:hover{background:var(--red);color:#fff}
+
+/* images inside the transcript */
+.msg-images{display:flex;flex-wrap:wrap;gap:8px;max-width:100%}
+.msg.user .msg-images{justify-content:flex-end}
+.msg-images a{display:block;line-height:0;border:1px solid var(--cyan-dim);transition:.2s;
+  clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
+.msg.user .msg-images a{border-color:var(--gold-dim)}
+.msg-images a:hover{border-color:var(--cyan);box-shadow:var(--glow-cyan)}
+.msg-images img{max-width:240px;max-height:240px;object-fit:cover;display:block}
 .composer-hint{display:flex;justify-content:space-between;align-items:center;margin-top:8px;
   font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--faint)}
 .composer-hint b{color:var(--gold-dim)}

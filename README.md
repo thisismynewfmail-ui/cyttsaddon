@@ -84,6 +84,27 @@ Set an optional **ACCESS TOKEN** to require a shared secret to connect.
   Jinja template* to render a template locally and post raw to
   `/v1/completions`.
 
+## Image input (vision)
+
+The composer has a small **image icon above the send button**. Click it (or
+just **paste** an image into the input) to attach one or more pictures to the
+next message — up to 8 per turn. Each image is **compressed in the browser
+before it is sent**: the longest edge is scaled down to `image_max_dim`
+(default `1280` px) and the result re-encoded as JPEG at `image_quality`
+(default `0.82`), so the socket payload and the model's context cost both stay
+small. Set `image_max_dim` to `0` to keep the original resolution.
+
+Attached images appear as removable thumbnails in the composer tray before
+transmit, then render inline in the transcript (click one to open it full
+size). The default `/v1/chat/completions` path forwards them in the standard
+OpenAI **vision** format (an `image_url` content part per image), so any
+vision-capable endpoint receives them correctly. Each image is charged a flat
+budget against the context-fullness meter. Raw `/v1/completions` (custom Jinja
+template) mode cannot carry images, so there the text is sent on its own.
+
+The control can be hidden entirely with `image_input_enabled: false` in
+`data/state.json`.
+
 ## Speech / voice output
 
 The **SPEECH** tab drives spoken output and offers two interchangeable engines,
