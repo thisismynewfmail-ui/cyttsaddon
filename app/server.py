@@ -42,6 +42,27 @@ _gen_lock = threading.Lock()
 _busy = False
 _stop_event = threading.Event()
 
+# Image input limits. Images arrive as `data:image/…;base64,…` URLs already
+# compressed in the browser; these caps are a server-side backstop against an
+# oversized or malformed payload.
+MAX_IMAGES = 8
+MAX_IMAGE_CHARS = 12_000_000  # ~9 MB of base64 per image
+
+
+def _sanitize_images(images) -> list:
+    """Keep only well-formed, reasonably-sized image data URLs."""
+    if not isinstance(images, list):
+        return []
+    out = []
+    for im in images[:MAX_IMAGES]:
+        if (isinstance(im, str)
+                and im.startswith("data:image/")
+                and "base64," in im
+                and len(im) <= MAX_IMAGE_CHARS):
+            out.append(im)
+    return out
+
+
 # Link-test ordering: a slow result from a previous endpoint must never
 # overwrite a newer one, so every probe carries a sequence number.
 _link_seq = 0
@@ -333,7 +354,8 @@ def on_stop_generation(_data=None):
 def on_send_message(data):
     global _busy
     text = ((data or {}).get("text") or "").strip()
-    if not text:
+    images = _sanitize_images((data or {}).get("images"))
+    if not text and not images:
         return
     with _gen_lock:
         if _busy:
@@ -346,8 +368,11 @@ def on_send_message(data):
     sid = store.active_id()
     settings = store.get_settings()
 
-    # 1. record the user's turn
-    store.add_message(sid, {"role": "user", "content": text})
+    # 1. record the user's turn (images ride along on the message record)
+    user_msg = {"role": "user", "content": text}
+    if images:
+        user_msg["images"] = images
+    store.add_message(sid, user_msg)
     broadcast_active()
 
     # 2. past reasoning blocks evaporate the moment a new turn begins
@@ -358,7 +383,7 @@ def on_send_message(data):
     pid = placeholder["id"]
     broadcast_active()
 
-    socketio.start_background_task(_run_generation, sid, pid, text, settings)
+    socketio.start_background_task(_run_generation, sid, pid, text, images, settings)
 
 
 def _emit_tts_audio(seq, wav_bytes, sample_rate):
@@ -369,7 +394,7 @@ def _emit_tts_audio(seq, wav_bytes, sample_rate):
     })
 
 
-def _run_generation(sid, pid, text, settings):
+def _run_generation(sid, pid, text, images, settings):
     global _busy
     buf = []
 
@@ -401,6 +426,7 @@ def _run_generation(sid, pid, text, settings):
         result = llm.stream_completion(
             req_history, settings, text, on_delta,
             stop_flag=_stop_event.is_set,
+            user_images=images,
         )
         store.update_message(sid, pid, {
             "content": result["raw"],

@@ -15,10 +15,19 @@ def chat():
     body = request.get_json(force=True)
     # echo a few sampler keys back into the reply so the test can confirm pass-through
     seen = {k: body.get(k) for k in ("temperature", "dynamic_temperature", "repetition_penalty_range", "min_p")}
-    nmsg = len(body.get("messages", []))
+    msgs = body.get("messages", [])
+    nmsg = len(msgs)
+    # count image_url parts across the prompt so the test can confirm vision relay
+    nimg = sum(
+        1
+        for m in msgs
+        if isinstance(m.get("content"), list)
+        for part in m["content"]
+        if isinstance(part, dict) and part.get("type") == "image_url"
+    )
     def gen():
         chunks = ["<think>", f"plan with {nmsg} msgs ", "and temp", "</think>",
-                  "ACK ", f"samplers={json.dumps(seen)} ", "// done."]
+                  "ACK ", f"images={nimg} ", f"samplers={json.dumps(seen)} ", "// done."]
         for c in chunks:
             yield f"data: {json.dumps({'choices':[{'delta':{'content':c}}]})}\n\n"
             time.sleep(0.01)

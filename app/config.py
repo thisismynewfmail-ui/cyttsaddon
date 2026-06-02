@@ -100,6 +100,15 @@ DEFAULT_SETTINGS = {
     "piper_voice": "",              # selected voice id (filename stem, no .onnx)
     "piper_length_scale": 1.0,      # speaking rate (lower = faster)
 
+    # ---- Image input (vision) ----
+    # Images are compressed in the browser before transmission: the longest
+    # edge is scaled down to `image_max_dim` and the result re-encoded as JPEG
+    # at `image_quality`. This keeps both the socket payload and the model's
+    # context cost in check. Set image_max_dim to 0 to keep the original size.
+    "image_input_enabled": True,    # show the attach-image control in the composer
+    "image_max_dim": 1280,          # longest edge after client-side downscale (px)
+    "image_quality": 0.82,          # JPEG re-encode quality (0..1)
+
     # ---- Display ----
     "show_generation_info": False,  # per-message gen stats, hidden by default
 

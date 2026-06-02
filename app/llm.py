@@ -42,10 +42,27 @@ def estimate_tokens(text: str, chars_per_token: float = 4.0) -> int:
     return max(1, int(round(len(text) / ratio)))
 
 
+# Rough budget charged per attached image when accounting for context fullness.
+# Vision models bill images by tile; this is a deliberately conservative single
+# figure so the fullness meter never under-reports a picture-heavy prompt.
+IMAGE_TOKEN_COST = 765
+
+
 def message_tokens(msg: dict, chars_per_token: float = 4.0) -> int:
     """Token cost of one chat message incl. a small role/formatting overhead."""
-    content = msg.get("content", "") or ""
-    return estimate_tokens(content, chars_per_token) + 4
+    content = msg.get("content", "")
+    if isinstance(content, list):
+        # Vision-style content: a list of {type: text|image_url, …} parts.
+        total = 0
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") == "text":
+                total += estimate_tokens(part.get("text", "") or "", chars_per_token)
+            elif part.get("type") == "image_url":
+                total += IMAGE_TOKEN_COST
+        return total + 4
+    return estimate_tokens(content or "", chars_per_token) + 4
 
 
 def count_prompt_tokens(messages: list[dict], chars_per_token: float = 4.0) -> int:
@@ -101,6 +118,27 @@ def has_think(text: str, open_tag="<think>") -> bool:
 # --------------------------------------------------------------------------
 # Context cropping
 # --------------------------------------------------------------------------
+def _user_content(text: str, images: list, settings: dict):
+    """
+    Build the `content` for a user turn.
+
+    With attached images and the default (chat-completions) path this becomes
+    the OpenAI vision array — a text part followed by one `image_url` part per
+    image. Raw /v1/completions (custom Jinja template) cannot carry images, so
+    there we fall back to the plain text string.
+    """
+    if not images or settings.get("use_custom_template", False):
+        return text or ""
+    parts = []
+    if text:
+        parts.append({"type": "text", "text": text})
+    for url in images:
+        if isinstance(url, str) and url:
+            parts.append({"type": "image_url", "image_url": {"url": url}})
+    # If everything fell out (no text, no valid images) keep the text string.
+    return parts or (text or "")
+
+
 def build_history(messages: list[dict], settings: dict) -> list[dict]:
     """
     Turn stored session messages into clean role/content dicts for the model.
@@ -108,6 +146,7 @@ def build_history(messages: list[dict], settings: dict) -> list[dict]:
     * System messages are preserved verbatim.
     * Assistant messages have their think spans stripped (reasoning is never
       replayed into the context).
+    * User messages carrying images are encoded as a vision content array.
     """
     op = settings.get("think_open_tag", "<think>")
     cl = settings.get("think_close_tag", "</think>")
@@ -118,11 +157,12 @@ def build_history(messages: list[dict], settings: dict) -> list[dict]:
             content = m.get("clean")
             if content is None:
                 content = strip_think(m.get("content", ""), op, cl)
+            entry = {"role": role, "content": content}
         else:
-            content = m.get("content", "")
-        entry = {"role": role, "content": content}
-        if role == "user" and settings.get("username"):
-            entry["name"] = settings["username"]
+            content = _user_content(m.get("content", ""), m.get("images") or [], settings)
+            entry = {"role": role, "content": content}
+            if role == "user" and settings.get("username"):
+                entry["name"] = settings["username"]
         out.append(entry)
     return out
 
@@ -197,12 +237,14 @@ def _render_template(template: str, system_message: str, messages: list[dict]) -
     )
 
 
-def build_request(messages_store: list[dict], settings: dict, extra_user: str | None = None):
+def build_request(messages_store: list[dict], settings: dict,
+                  extra_user: str | None = None, extra_images: list | None = None):
     """
     Returns (url, body, headers, debug) ready for a streaming POST.
 
     `messages_store` is the stored session list (no system row). `extra_user`,
-    if provided, is appended as a fresh user turn before cropping.
+    if provided, is appended as a fresh user turn before cropping; `extra_images`
+    attaches that turn's images as a vision content array.
     """
     op = settings.get("think_open_tag", "<think>")
 
@@ -219,7 +261,7 @@ def build_request(messages_store: list[dict], settings: dict, extra_user: str | 
             d = settings.get("think_on_directive", "")
             if d:
                 user_text = f"{user_text}\n\n{d}".strip()
-        entry = {"role": "user", "content": user_text}
+        entry = {"role": "user", "content": _user_content(user_text, extra_images or [], settings)}
         if settings.get("username"):
             entry["name"] = settings["username"]
         history.append(entry)
@@ -271,14 +313,16 @@ def build_request(messages_store: list[dict], settings: dict, extra_user: str | 
 # --------------------------------------------------------------------------
 # Streaming
 # --------------------------------------------------------------------------
-def stream_completion(messages_store, settings, user_text, on_delta, stop_flag=None):
+def stream_completion(messages_store, settings, user_text, on_delta, stop_flag=None,
+                      user_images=None):
     """
     Drive a streaming generation.
 
     `on_delta(text)` is called for every content chunk. Returns a result dict
     with the full raw text, the cleaned text, reasoning, and metadata.
+    `user_images`, if given, attach to the latest user turn (vision input).
     """
-    url, body, headers, debug = build_request(messages_store, settings, user_text)
+    url, body, headers, debug = build_request(messages_store, settings, user_text, user_images)
     op = settings.get("think_open_tag", "<think>")
     cl = settings.get("think_close_tag", "</think>")
     is_chat = not settings.get("use_custom_template", False)
